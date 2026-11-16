@@ -27,3 +27,10 @@ spec:
             httpGet:
               path: /
               port: 80
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html # whole dir, no subPath: ConfigMap updates reach the pod
+      volumes:
+        - name: content
+          configMap:
+            name: web-content
