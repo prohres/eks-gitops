@@ -13,7 +13,8 @@ ArgoCD hub ──watches──► this repo: bootstrap/ (ApplicationSets) ─►
 
 | Path | What |
 |---|---|
-| `bootstrap/` | ApplicationSets, applied once to the ArgoCD hub |
+| `root.yaml` | Root Application (app of apps), the only manifest applied by hand |
+| `bootstrap/` | ApplicationSets, synced by the root Application |
 | `workloads/web/` | Demo app: nginx Deployment, Service, Ingress |
 
 ## Design decisions
@@ -25,6 +26,8 @@ ArgoCD hub ──watches──► this repo: bootstrap/ (ApplicationSets) ─►
   `kube-system/aws-load-balancer-controller`); the chart's service account name must match.
 - The chart generates webhook TLS on every render (Helm `lookup` does not run in ArgoCD):
   `ignoreDifferences` + `RespectIgnoreDifferences` keep the first certificate.
+- App of apps: the root Application syncs `bootstrap/`, so ApplicationSet changes go through git too;
+  only `root.yaml` is applied by hand.
 - Chart and image versions are pinned; new releases wait about two weeks before adoption.
 
 ## Register a cluster
@@ -35,15 +38,16 @@ argocd cluster add <context> --name <cluster-name> --label platform=eks \
   --annotation eks-cluster-name=<cluster-name> \
   --annotation aws-region=<region> \
   --annotation vpc-id=<vpc-id>     # eks-infra: terraform output -raw vpc_id
-kubectl --context <hub-context> apply -f bootstrap/
+kubectl --context <hub-context> apply -f root.yaml   # once per hub
 ```
 
 ## Remove
 
 Order matters, otherwise the VPC destroy hangs on the ALB's ENIs and security groups:
 
-1. `kubectl --context <hub-context> delete -f bootstrap/web.yaml`: the Ingress goes, the controller
+1. `kubectl --context <hub-context> delete -f root.yaml`: stops self-heal, the ApplicationSets stay.
+2. `kubectl --context <hub-context> delete -f bootstrap/web.yaml`: the Ingress goes, the controller
    deletes the ALB. Wait until the ALB is gone.
-2. `kubectl --context <hub-context> delete -f bootstrap/aws-load-balancer-controller.yaml`
-3. `argocd cluster rm <context>`
-4. `terraform destroy` in eks-infra.
+3. `kubectl --context <hub-context> delete -f bootstrap/aws-load-balancer-controller.yaml`
+4. `argocd cluster rm <context>`
+5. `terraform destroy` in eks-infra.
