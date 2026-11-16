@@ -25,6 +25,7 @@ spec:
         chart: aws-load-balancer-controller
         targetRevision: 3.6.2
         helm:
+          releaseName: aws-load-balancer-controller # default would be the Application name (eks-infra-…)
           valuesObject:
             clusterName: '{{index .metadata.annotations "eks-cluster-name"}}'
             region: '{{index .metadata.annotations "aws-region"}}'
