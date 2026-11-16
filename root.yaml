@@ -1,0 +1,21 @@
+# App of apps: the only manifest applied by hand (once per ArgoCD hub).
+# It syncs bootstrap/, so changes to the ApplicationSets arrive through git like any other change.
+# No resources finalizer: deleting root leaves the ApplicationSets and everything below them in place.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/prohres/eks-gitops.git
+    targetRevision: develop
+    path: bootstrap
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
