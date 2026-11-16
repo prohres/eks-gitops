@@ -1,0 +1,55 @@
+# AWS Load Balancer Controller on every cluster labelled platform=eks.
+# Cluster name, region and VPC id come from the ArgoCD cluster Secret annotations, not from git.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            platform: eks
+  template:
+    metadata:
+      name: '{{.name}}-aws-load-balancer-controller'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://aws.github.io/eks-charts
+        chart: aws-load-balancer-controller
+        targetRevision: 3.6.2
+        helm:
+          valuesObject:
+            clusterName: '{{index .metadata.annotations "eks-cluster-name"}}'
+            region: '{{index .metadata.annotations "aws-region"}}'
+            vpcId: '{{index .metadata.annotations "vpc-id"}}'
+            serviceAccount:
+              create: true
+              name: aws-load-balancer-controller # must match the Pod Identity association in eks-infra
+      destination:
+        server: '{{.server}}'
+        namespace: kube-system
+      # The chart generates webhook TLS on every render (Helm lookup does not run in ArgoCD):
+      # keep the first certificate instead of an endless OutOfSync / re-sync loop.
+      ignoreDifferences:
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          jqPathExpressions: ['.webhooks[]?.clientConfig.caBundle']
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jqPathExpressions: ['.webhooks[]?.clientConfig.caBundle']
+        - kind: Secret
+          name: aws-load-balancer-tls
+          jsonPointers: [/data]
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - RespectIgnoreDifferences=true

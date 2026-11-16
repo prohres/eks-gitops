@@ -1,0 +1,40 @@
+# Demo workload on every cluster labelled platform=eks; its Ingress becomes an internet-facing ALB.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: web
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            platform: eks
+  template:
+    metadata:
+      name: '{{.name}}-web'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io # deleting the app deletes the Ingress → controller removes the ALB
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/prohres/eks-gitops.git
+        targetRevision: develop
+        path: workloads/web
+      destination:
+        server: '{{.server}}'
+        namespace: web
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+        retry: # the Ingress may arrive before the controller webhook is ready
+          limit: 5
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 3m
